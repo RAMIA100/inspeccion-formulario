@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <title>Formulario de Inspección</title>
+  <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+  <style>
+    body { font-family: Arial; padding: 20px; }
+    input, button { margin: 8px 0; width: 100%; padding: 8px; }
+    #lectorQR { width: 300px; margin-top: 10px; }
+  </style>
+</head>
+<body>
+  <h2>Registro de Inspección</h2>
+  <label>Shipment:</label>
+  <input type="text" id="shipment" />
+
+  <label>Inspeccionadas:</label>
+  <input type="number" id="inspeccionadas" />
+
+  <label>No Pasan:</label>
+  <input type="number" id="noPasan" />
+
+  <label>Serie (Escanear o escribir):</label>
+  <input type="text" id="serieInput" />
+  <button onclick="agregarSerie()">Agregar Serie</button>
+  <button onclick="iniciarEscaner()">📷 Escanear</button>
+
+  <div id="lectorQR"></div>
+  <div id="listaSeries"></div>
+
+  <button onclick="enviarDatos()">Enviar Registro</button>
+  <p id="estado"></p>
+
+<script>
+  const series = [];
+  let scanner;
+
+  function agregarSerie() {
+    const input = document.getElementById("serieInput");
+    const serie = input.value.trim();
+    if (serie && !series.includes(serie)) {
+      series.push(serie);
+      const div = document.createElement("div");
+      div.innerHTML = `<strong>${serie}</strong><br>
+        <input type="file" name="fotos_${serie}" multiple accept="image/*"><br><br>`;
+      document.getElementById("listaSeries").appendChild(div);
+      input.value = "";
+    }
+  }
+
+  function iniciarEscaner() {
+    const qrContainer = document.getElementById("lectorQR");
+    qrContainer.innerHTML = "";
+    scanner = new Html5Qrcode("lectorQR");
+    Html5Qrcode.getCameras().then(devices => {
+      const backCam = devices.find(d => d.label.toLowerCase().includes('back')) || devices[0];
+      scanner.start(backCam.id, { fps: 10, qrbox: 250 }, qr => {
+        document.getElementById("serieInput").value = qr;
+        agregarSerie();
+        scanner.stop();
+        qrContainer.innerHTML = "";
+      });
+    }).catch(err => {
+      qrContainer.innerHTML = "Error al acceder a la cámara.";
+    });
+  }
+
+  function enviarDatos() {
+    const shipment = document.getElementById("shipment").value;
+    const inspeccionadas = +document.getElementById("inspeccionadas").value;
+    const noPasan = +document.getElementById("noPasan").value;
+    if (!shipment || !inspeccionadas || !noPasan || series.length === 0) {
+      document.getElementById("estado").textContent = "Faltan datos.";
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append("data", JSON.stringify({ shipment, inspeccionadas, noPasan, series }));
+
+    series.forEach(serie => {
+      const input = document.querySelector(`input[name="fotos_${serie}"]`);
+      if (input) {
+        for (let i = 0; i < input.files.length; i++) {
+          formData.append(`fotos_${serie}_${i}`, input.files[i]);
+        }
+      }
+    });
+
+    document.getElementById("estado").textContent = "Enviando...";
+
+    fetch("https://script.google.com/a/macros/whirlpool.com/s/AKfycbym2ZiW1rtJnVaSfVVeQ03O2olV3ym29iy6Cwh1U_y_X5ynq8EOGE5TFWrxtRhJV09uTA/exec", {
+      method: "POST",
+      body: formData
+    }).then(res => res.json()).then(data => {
+      document.getElementById("estado").textContent = data.status === "success"
+        ? "✅ Enviado correctamente"
+        : "⚠️ Error: " + data.message;
+    }).catch(err => {
+      document.getElementById("estado").textContent = "❌ Error de red: " + err.message;
+    });
+  }
+</script>
+</body>
+</html>
